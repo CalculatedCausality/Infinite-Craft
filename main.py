@@ -1,6 +1,8 @@
 import json
 import requests
 import sqlite3
+import itertools
+import random
 import concurrent.futures
 from threading import Lock
 
@@ -66,6 +68,11 @@ class Database:
 class ItemTester:
 
 	def test_item(item1, item2):
+		with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+			future = executor.submit(ItemTester._test_item, item1, item2)
+			return future.result()
+
+	def _test_item(item1, item2):
 		params = {
 			'first': item1,
 			'second': item2,
@@ -94,23 +101,28 @@ class BruteForce:
 		prev_result = None
 		same_result_count = 0
 
-		with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-			for item1 in discoveredItems:
+		# Generate all possible combinations of the items
+		combinations = list(itertools.combinations(discoveredItems, 2))
+
+		# Shuffle the combinations to try them in a random order
+		random.shuffle(combinations)
+
+		with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+			for item1, item2 in combinations:
 				if same_result_count >= 20:
 					same_result_count = 0
 					continue
-				futures = [executor.submit(Database.process_item, item1, item2) for item2 in discoveredItems]
-				for future in concurrent.futures.as_completed(futures):
-					newItem = future.result()
-					if newItem is not None:
-						if newItem == prev_result:
-							same_result_count += 1
-						else:
-							same_result_count = 0
-						prev_result = newItem
-						newItems.append(newItem)
+				future = executor.submit(Database.process_item, item1, item2)
+				newItem = future.result()
+				if newItem is not None:
+					if newItem == prev_result:
+						same_result_count += 1
+					else:
+						same_result_count = 0
+					prev_result = newItem
+					newItems.append(newItem)
 
-		with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 			futures = [executor.submit(Database.process_item, newItem, item) for newItem in newItems for item in discoveredItems]
 
 			for future in concurrent.futures.as_completed(futures):
