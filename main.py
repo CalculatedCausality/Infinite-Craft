@@ -5,6 +5,7 @@ import itertools
 import random
 import concurrent.futures
 from threading import Lock
+import os
 
 class Config:
 	cookies = {
@@ -28,23 +29,25 @@ class Config:
 
 class Database:
 	db_lock = Lock()
+	connection_pool = None
 
 	@staticmethod
-	def get_db_connection():
-		conn = sqlite3.connect('infinite_craft.db', check_same_thread=False)
-		c = conn.cursor()
-
+	def initialize_connection_pool():
+		Database.connection_pool = sqlite3.connect('infinite_craft.db', check_same_thread=False)
+		c = Database.connection_pool.cursor()
 		c.execute('''CREATE TABLE IF NOT EXISTS items
 					 (item TEXT PRIMARY KEY, emoji TEXT)''')
-
 		c.execute('''CREATE TABLE IF NOT EXISTS combinations
 					 (item1 TEXT, item2 TEXT, result TEXT, isNew INTEGER,
 					 PRIMARY KEY (item1, item2),
 					 FOREIGN KEY (result) REFERENCES items (item))''')
+		Database.connection_pool.commit()
 
-		conn.commit()
-		return conn
+	@staticmethod
+	def get_db_connection():
+		return Database.connection_pool
 
+	@staticmethod
 	def process_item(item1, item2):
 		with Database.db_lock:
 			conn = Database.get_db_connection()
@@ -52,26 +55,24 @@ class Database:
 
 			c.execute("SELECT result FROM combinations WHERE item1 = ? AND item2 = ?", (item1, item2))
 			if c.fetchone() is None:
-
 				print(f"Trying combination: {item1} + {item2}")
 				result = ItemTester.test_item(item1, item2)
 				c.execute("INSERT OR IGNORE INTO items VALUES (?, ?)", (result['result'], result['emoji']))
 				c.execute("INSERT INTO combinations VALUES (?, ?, ?, ?)", (item1, item2, result['result'], result['isNew']))
 				conn.commit()
-				conn.close()
 				if result['isNew']:
 					print(f"New item discovered: {result['result']} ({result['emoji']}) from {item1} + {item2}")
 				return result['result'] if result['isNew'] else None
-			conn.close()
 		return None
 
 class ItemTester:
-
+	@staticmethod
 	def test_item(item1, item2):
 		with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
 			future = executor.submit(ItemTester._test_item, item1, item2)
 			return future.result()
 
+	@staticmethod
 	def _test_item(item1, item2):
 		params = {
 			'first': item1,
@@ -88,70 +89,74 @@ class ItemTester:
 		}
 
 class BruteForce:
-
+	@staticmethod
 	def brute_force():
 		with Database.db_lock:
 			conn = Database.get_db_connection()
 			c = conn.cursor()
 			c.execute("SELECT item FROM items WHERE item NOT IN (?, ?)", ('?', '???'))
-			discoveredItems = [item[0] for item in c.fetchall()]
-			conn.close()
+			discovered_items = set(item[0] for item in c.fetchall())
 
-		newItems = []
+		new_items = []
 		prev_result = None
 		same_result_count = 0
 
-		# Generate all possible combinations of the items
-		combinations = list(itertools.combinations(discoveredItems, 2))
-
-		# Shuffle the combinations to try them in a random order
-		random.shuffle(combinations)
-
-		with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-			for item1, item2 in combinations:
-				if same_result_count >= 20:
+		def process_combination(item1, item2):
+			nonlocal prev_result, same_result_count, new_items
+			if same_result_count >= 20:
+				same_result_count = 0
+				return
+			new_item = Database.process_item(item1, item2)
+			if new_item is not None:
+				if new_item == prev_result:
+					same_result_count += 1
+				else:
 					same_result_count = 0
-					continue
-				future = executor.submit(Database.process_item, item1, item2)
-				newItem = future.result()
-				if newItem is not None:
-					if newItem == prev_result:
-						same_result_count += 1
-					else:
-						same_result_count = 0
-					prev_result = newItem
-					newItems.append(newItem)
+				prev_result = new_item
+				new_items.append(new_item)
 
-		with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-			futures = [executor.submit(Database.process_item, newItem, item) for newItem in newItems for item in discoveredItems]
+		max_workers = min(32, (os.cpu_count() or 1) + 4)
+		with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+			futures = []
+			# Sort combinations by total number of characters in items
+			combinations = sorted(itertools.combinations(discovered_items, 2), key=lambda x: len(x[0]) + len(x[1]))
+			for item1, item2 in combinations:
+				futures.append(executor.submit(process_combination, item1, item2))
+			concurrent.futures.wait(futures)
 
+		with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+			futures = []
+			for new_item in new_items:
+				for item in discovered_items:
+					futures.append(executor.submit(Database.process_item, new_item, item))
 			for future in concurrent.futures.as_completed(futures):
-				newItem = future.result()
-				if newItem is not None:
-					print(f"New item discovered: {newItem} from combination")
+				new_item = future.result()
+				if new_item is not None:
+					print(f"New item discovered: {new_item} from combination")
 
-		return len(newItems)
+		return len(new_items)
 
 def main():
-	initialItems = ['cloud', 'earth', 'fire', 'lake', 'ocean', 'sea', 'steam', 'water', 'wind']
+	Database.initialize_connection_pool()
+
+	initial_items = ['cloud', 'earth', 'fire', 'lake', 'ocean', 'sea', 'steam', 'water', 'wind']
 
 	with Database.db_lock:
 		conn = Database.get_db_connection()
 		c = conn.cursor()
-		for item in initialItems:
+		for item in initial_items:
 			c.execute("INSERT OR IGNORE INTO items VALUES (?, '')", (item,))
 		conn.commit()
-		conn.close()
 
 	print('Beginning')
 
 	while True:
-		newCount = BruteForce.brute_force()
-		if newCount == 0:
+		new_count = BruteForce.brute_force()
+		if new_count == 0:
 			print("No new items discovered. Brute force complete.")
 			break
 		else:
-			print(f"Discovered {newCount} new items. Continuing brute force...")
+			print(f"Discovered {new_count} new items. Continuing brute force...")
 
 if __name__ == "__main__":
 	main()
