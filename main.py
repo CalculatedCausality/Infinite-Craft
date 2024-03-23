@@ -82,18 +82,15 @@ class Database:
 				print(f"Trying combination: {item1} + {item2}")
 				result = ItemTester.itemTester(item1, item2)
 
-				# Check if the item already exists in the items table
-				c.execute("SELECT * FROM items WHERE item = ?", (result['result'],))
-				item_exists = c.fetchone() is not None
-
+				# Insert the item into the items table, ignoring if it already exists
 				c.execute("INSERT OR IGNORE INTO items VALUES (?, ?)", (result['result'], result['emoji']))
+				if c.rowcount == 1:
+					print(f"Item added to database: {result['result']} ({result['emoji']}) from {item1} + {item2}")
+
 				c.execute("INSERT INTO combinations VALUES (?, ?, ?, ?)", (item1, item2, result['result'], result['isNew']))
 
 				if result['isNew']:
 					print(f"New item discovered: {result['result']} ({result['emoji']}) from {item1} + {item2}")
-				else:
-					if not item_exists:
-						print(f"Item added to database: {result['result']} ({result['emoji']}) from {item1} + {item2}")
 
 				# Update combination counts
 				c.execute("INSERT OR IGNORE INTO combination_counts (input_item, result_item, count) VALUES (?, ?, 0)", (item1, result['result']))
