@@ -41,7 +41,7 @@ class Database:
 				SELECT input_item, MAX(count) as max_count
 				FROM combination_counts
 				GROUP BY input_item
-				HAVING max_count > 20
+				HAVING max_count > 10
 			""")
 			results = c.fetchall()
 			return [item[0] for item in results]
@@ -132,6 +132,9 @@ class BruteForce:
 	def process_combinations(combinations):
 		results = []
 		for item1, item2 in combinations:
+
+			# counts = Database.check_item_counts()
+
 			result = Database.process_item(item1, item2)
 			if result:
 				results.append(result)
