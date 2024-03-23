@@ -41,11 +41,15 @@ class Database:
 					 (item1 TEXT, item2 TEXT, result TEXT, isNew INTEGER,
 					 PRIMARY KEY (item1, item2),
 					 FOREIGN KEY (result) REFERENCES items (item))''')
+		c.execute('''CREATE TABLE IF NOT EXISTS combination_counts
+					(item1 TEXT, item2 TEXT, same_result_count INTEGER,
+					PRIMARY KEY (item1, item2))''')  # New table to track combination counts
 		Database.connection_pool.commit()
 
 	def getDbConnections():
 		return Database.connection_pool
 
+	@staticmethod
 	def process_item(item1, item2):
 		with Database.db_lock:
 			conn = Database.getDbConnections()
@@ -55,12 +59,38 @@ class Database:
 			if conn is None:
 				return None
 			c = conn.cursor()
+
+			# Fetch the count of consecutive identical results for the given item combination
+			c.execute("SELECT same_result_count FROM combination_counts WHERE item1 = ? AND item2 = ?", (item1, item2))
+			same_result_count = c.fetchone()
+
+			# Initialize same_result_count to 0 if no record is found
+			if same_result_count is None:
+				same_result_count = 0
+			else:
+				same_result_count = same_result_count[0]
+
+			if same_result_count >= 20:
+				print(f"Skipping combination {item1} + {item2} as it has resulted in the same item 20 times.")
+				return None
+
 			c.execute("SELECT result FROM combinations WHERE item1 = ? AND item2 = ?", (item1, item2))
 			if c.fetchone() is None:
 				print(f"Trying combination: {item1} + {item2}")
 				result = ItemTester.itemTester(item1, item2)
 				c.execute("INSERT OR IGNORE INTO items VALUES (?, ?)", (result['result'], result['emoji']))
 				c.execute("INSERT INTO combinations VALUES (?, ?, ?, ?)", (item1, item2, result['result'], result['isNew']))
+
+				# Update same_result_count if the result is the same as the previous one
+				if result['isNew'] == 0:
+					same_result_count += 1
+				else:
+					same_result_count = 0
+
+				# Update the same_result_count in the combination_counts table
+				c.execute("INSERT OR REPLACE INTO combination_counts VALUES (?, ?, ?)",
+						  (item1, item2, same_result_count))
+
 				conn.commit()
 				if result['isNew']:
 					print(f"New item discovered: {result['result']} ({result['emoji']}) from {item1} + {item2}")
