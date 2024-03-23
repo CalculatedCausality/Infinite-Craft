@@ -32,6 +32,20 @@ class Database:
 	db_lock = Lock()
 	connection_pool = None
 
+	@staticmethod
+	def check_item_counts():
+		with Database.db_lock:
+			conn = Database.getDbConnections()
+			c = conn.cursor()
+			c.execute("""
+				SELECT input_item, MAX(count) as max_count
+				FROM combination_counts
+				GROUP BY input_item
+				HAVING max_count > 20
+			""")
+			results = c.fetchall()
+			return [item[0] for item in results]
+
 	def initConnectionPool():
 		Database.connection_pool = sqlite3.connect('infinite_craft.db', check_same_thread=False)
 		c = Database.connection_pool.cursor()
@@ -120,6 +134,9 @@ class BruteForce:
 	@staticmethod
 	def brute_force(discovered_items):
 		new_items = set()
+		items_to_skip = Database.check_item_counts()
+		discovered_items = [item for item in discovered_items if item not in items_to_skip]
+
 		with concurrent.futures.ProcessPoolExecutor() as executor:
 			chunk_size = 1000
 			discovered_items_list = list(discovered_items)  # Convert set to list
