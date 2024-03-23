@@ -122,6 +122,7 @@ class ItemTester:
 
 
 class BruteForce:
+
 	@staticmethod
 	def process_combinations(combinations):
 		results = []
@@ -134,8 +135,8 @@ class BruteForce:
 	@staticmethod
 	def brute_force(discovered_items):
 		new_items = set()
-		items_to_skip = Database.check_item_counts()
-		discovered_items = [item for item in discovered_items if item not in items_to_skip]
+		items_to_skip = set(Database.check_item_counts())
+		discovered_items = (item for item in discovered_items if item not in items_to_skip)
 
 		with concurrent.futures.ProcessPoolExecutor() as executor:
 			chunk_size = 1000
@@ -143,8 +144,7 @@ class BruteForce:
 			for i in range(0, len(discovered_items_list), chunk_size):
 				combinations = itertools.combinations(discovered_items_list[i:i+chunk_size], 2)
 				results = executor.map(BruteForce.process_combinations, [combinations])
-				for result in results:
-					new_items.update(result)
+				new_items.update(itertools.chain.from_iterable(results))
 
 		return new_items
 
