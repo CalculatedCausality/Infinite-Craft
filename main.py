@@ -67,10 +67,10 @@ class Database:
 
 class ItemTester:
 	@staticmethod
-	def test_item(item1, item2):
+	def test_item(items):
 		with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-			future = executor.submit(ItemTester._test_item, item1, item2)
-			return future.result()
+			futures = {executor.submit(ItemTester._test_item, item1, item2): (item1, item2) for item1, item2 in items}
+			return {fut.result(): items[fut] for fut in concurrent.futures.as_completed(futures)}
 
 	@staticmethod
 	def _test_item(item1, item2):
