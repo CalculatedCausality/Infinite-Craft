@@ -79,7 +79,7 @@ class Database:
 			c.execute("SELECT result FROM combinations WHERE item1 = ? AND item2 = ?", (item1, item2))
 			result = c.fetchone()
 			if result is None:
-				print(f"Trying combination: {item1} + {item2}")
+				# print(f"Trying combination: {item1} + {item2}")
 				result = ItemTester.itemTester(item1, item2)
 
 				# Insert the item into the items table, ignoring if it already exists
@@ -116,8 +116,13 @@ class ItemTester:
 			'second': item2,
 		}
 
-		response = requests.get('https://neal.fun/api/infinite-craft/pair', params=params, cookies=Config.cookies, headers=Config.headers)
-		response = json.loads(response.text)
+		while True:
+			try:
+				response = requests.get('https://neal.fun/api/infinite-craft/pair', params=params, cookies=Config.cookies, headers=Config.headers)
+				response = json.loads(response.text)
+				break
+			except Exception as e:
+				print(e)
 
 		return {
 			'result': response['result'],
@@ -131,7 +136,15 @@ class BruteForce:
 	@staticmethod
 	def process_combinations(combinations):
 		results = []
+
+		returner = 0
+
 		for item1, item2 in combinations:
+
+			returner += 1
+
+			if returner > 50:
+				break
 
 			# counts = Database.check_item_counts()
 
@@ -142,7 +155,7 @@ class BruteForce:
 
 	@staticmethod
 	def brute_force(discovered_items):
-		new_items = set()
+
 		items_to_skip = set(Database.check_item_counts())
 		discovered_items = (item for item in discovered_items if item not in items_to_skip)
 
@@ -151,10 +164,7 @@ class BruteForce:
 			discovered_items_list = list(discovered_items)  # Convert set to list
 			for i in range(0, len(discovered_items_list), chunk_size):
 				combinations = itertools.combinations(discovered_items_list[i:i+chunk_size], 2)
-				results = executor.map(BruteForce.process_combinations, [combinations])
-				new_items.update(itertools.chain.from_iterable(results))
-
-		return new_items
+				executor.map(BruteForce.process_combinations, [combinations])
 
 def main():
 	Database.initConnectionPool()
@@ -177,12 +187,7 @@ def main():
 			c.execute("SELECT item FROM items WHERE item NOT IN (?, ?)", ('?', '???'))
 			discovered_items = set(item[0] for item in c.fetchall())
 
-		new_items = BruteForce.brute_force(discovered_items)
-		if not new_items:
-			print("No new items discovered. Brute force complete.")
-			break
-		else:
-			print(f"Discovered {len(new_items)} new items. Continuing brute force...")
+		BruteForce.brute_force(discovered_items)
 
 if __name__ == "__main__":
 	main()
