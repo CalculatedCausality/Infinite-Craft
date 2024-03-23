@@ -42,8 +42,10 @@ class Database:
 					 PRIMARY KEY (item1, item2),
 					 FOREIGN KEY (result) REFERENCES items (item))''')
 		c.execute('''CREATE TABLE IF NOT EXISTS combination_counts
-					(item1 TEXT, item2 TEXT, same_result_count INTEGER,
-					PRIMARY KEY (item1, item2))''')  # New table to track combination counts
+					(input_item TEXT, result_item TEXT, count INTEGER,
+					PRIMARY KEY (input_item, result_item),
+					FOREIGN KEY (input_item) REFERENCES items (item),
+					FOREIGN KEY (result_item) REFERENCES items (item))''')  # Updated structure for combination_counts
 		Database.connection_pool.commit()
 
 	def getDbConnections():
@@ -60,40 +62,24 @@ class Database:
 				return None
 			c = conn.cursor()
 
-			# Fetch the count of consecutive identical results for the given item combination
-			c.execute("SELECT same_result_count FROM combination_counts WHERE item1 = ? AND item2 = ?", (item1, item2))
-			same_result_count = c.fetchone()
-
-			# Initialize same_result_count to 0 if no record is found
-			if same_result_count is None:
-				same_result_count = 0
-			else:
-				same_result_count = same_result_count[0]
-
-			if same_result_count >= 20:
-				print(f"Skipping combination {item1} + {item2} as it has resulted in the same item 20 times.")
-				return None
-
 			c.execute("SELECT result FROM combinations WHERE item1 = ? AND item2 = ?", (item1, item2))
-			if c.fetchone() is None:
+			result = c.fetchone()
+			if result is None:
 				print(f"Trying combination: {item1} + {item2}")
 				result = ItemTester.itemTester(item1, item2)
 				c.execute("INSERT OR IGNORE INTO items VALUES (?, ?)", (result['result'], result['emoji']))
 				c.execute("INSERT INTO combinations VALUES (?, ?, ?, ?)", (item1, item2, result['result'], result['isNew']))
 
-				# Update same_result_count if the result is the same as the previous one
-				if result['isNew'] == 0:
-					same_result_count += 1
-				else:
-					same_result_count = 0
-
-				# Update the same_result_count in the combination_counts table
-				c.execute("INSERT OR REPLACE INTO combination_counts VALUES (?, ?, ?)",
-						  (item1, item2, same_result_count))
-
-				conn.commit()
 				if result['isNew']:
 					print(f"New item discovered: {result['result']} ({result['emoji']}) from {item1} + {item2}")
+
+				# Update combination counts
+				c.execute("INSERT OR IGNORE INTO combination_counts (input_item, result_item, count) VALUES (?, ?, 0)", (item1, result['result']))
+				c.execute("UPDATE combination_counts SET count = count + 1 WHERE input_item = ? AND result_item = ?", (item1, result['result']))
+				c.execute("INSERT OR IGNORE INTO combination_counts (input_item, result_item, count) VALUES (?, ?, 0)", (item2, result['result']))
+				c.execute("UPDATE combination_counts SET count = count + 1 WHERE input_item = ? AND result_item = ?", (item2, result['result']))
+
+				conn.commit()
 				return result['result'] if result['isNew'] else None
 		return None
 
@@ -119,6 +105,7 @@ class ItemTester:
 			'emoji': response['emoji'],
 			'isNew': response['isNew']
 		}
+
 
 class BruteForce:
 	@staticmethod
