@@ -49,8 +49,12 @@ class Database:
 	def process_item(item1, item2):
 		with Database.db_lock:
 			conn = Database.getDbConnections()
+			if conn is None:
+				Database.initConnectionPool()
+				conn = Database.getDbConnections()
+			if conn is None:
+				return None
 			c = conn.cursor()
-
 			c.execute("SELECT result FROM combinations WHERE item1 = ? AND item2 = ?", (item1, item2))
 			if c.fetchone() is None:
 				print(f"Trying combination: {item1} + {item2}")
@@ -87,48 +91,28 @@ class ItemTester:
 		}
 
 class BruteForce:
+	@staticmethod
+	def process_combinations(combinations):
+		results = []
+		for item1, item2 in combinations:
+			result = Database.process_item(item1, item2)
+			if result:
+				results.append(result)
+		return results
 
-	def brute_force():
-		with Database.db_lock:
-			conn = Database.getDbConnections()
-			c = conn.cursor()
-			c.execute("SELECT item FROM items WHERE item NOT IN (?, ?)", ('?', '???'))
-			discovered_items = set(item[0] for item in c.fetchall())
+	@staticmethod
+	def brute_force(discovered_items):
+		new_items = set()
+		with concurrent.futures.ProcessPoolExecutor() as executor:
+			chunk_size = 1000
+			discovered_items_list = list(discovered_items)  # Convert set to list
+			for i in range(0, len(discovered_items_list), chunk_size):
+				combinations = itertools.combinations(discovered_items_list[i:i+chunk_size], 2)
+				results = executor.map(BruteForce.process_combinations, [combinations])
+				for result in results:
+					new_items.update(result)
 
-		new_items = []
-		prev_result = None
-		same_result_count = 0
-
-		def process_combination(combination):
-			nonlocal prev_result, same_result_count, new_items
-			item1, item2 = combination
-			print(f"Processing combination: {item1}, {item2}")
-			if same_result_count >= 20:
-				same_result_count = 0
-				return
-			new_item = Database.process_item(item1, item2)
-			if new_item is not None:
-				if new_item == prev_result:
-					same_result_count += 1
-				else:
-					same_result_count = 0
-				prev_result = new_item
-				new_items.append(new_item)
-
-		max_workers = min(32, (os.cpu_count() or 1) + 4)
-		with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-			combinations = itertools.combinations(discovered_items, 2)
-			executor.map(process_combination, combinations)
-
-		with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-			futures = [executor.submit(Database.process_item, new_item, item) for new_item in new_items for item in discovered_items]
-			for future in concurrent.futures.as_completed(futures):
-				new_item = future.result()
-				if new_item is not None:
-					print(f"New item discovered: {new_item} from combination")
-					print(f"Status: Item processed")  # Print status
-
-		return len(new_items)
+		return new_items
 
 def main():
 	Database.initConnectionPool()
@@ -145,12 +129,18 @@ def main():
 	print('Beginning')
 
 	while True:
-		new_count = BruteForce.brute_force()
-		if new_count == 0:
+		with Database.db_lock:
+			conn = Database.getDbConnections()
+			c = conn.cursor()
+			c.execute("SELECT item FROM items WHERE item NOT IN (?, ?)", ('?', '???'))
+			discovered_items = set(item[0] for item in c.fetchall())
+
+		new_items = BruteForce.brute_force(discovered_items)
+		if not new_items:
 			print("No new items discovered. Brute force complete.")
 			break
 		else:
-			print(f"Discovered {new_count} new items. Continuing brute force...")
+			print(f"Discovered {len(new_items)} new items. Continuing brute force...")
 
 if __name__ == "__main__":
 	main()
