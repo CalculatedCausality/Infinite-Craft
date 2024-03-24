@@ -135,18 +135,24 @@ class BruteForce:
 
 	@staticmethod
 	def process_combinations(combinations):
+
+		skippers = ['ombie', 'bominable',' Aqua', 'aqua', 'Fozz', 'Pho-', 'pho-']
+
 		results = []
 
 		returner = 0
 
 		for item1, item2 in combinations:
 
+			if any(skipper in item1 or skipper in item2 for skipper in skippers):
+				results.append(None)
+				continue
+
+
 			returner += 1
 
 			if returner > 50:
 				break
-
-			# counts = Database.check_item_counts()
 
 			result = Database.process_item(item1, item2)
 			if result:
