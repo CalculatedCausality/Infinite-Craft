@@ -1,6 +1,7 @@
 from components.bruteForce import BruteForce
 from components.database import Database
 import concurrent.futures
+import os
 
 def initialize_items(items):
 	with Database.db_lock, Database.getDbConnections() as conn:
@@ -22,7 +23,8 @@ def main():
 			c.execute("SELECT item FROM items")
 			discovered_items = set(item[0] for item in c.fetchall())
 
-		with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+		num_workers = os.cpu_count() or 1
+		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			for _ in range(4):
 				executor.submit(BruteForce.brute_force, discovered_items)
 
