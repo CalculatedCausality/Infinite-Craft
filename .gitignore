@@ -1,2 +1,3 @@
 *.pyc
 infinite_craft.db
+infinite_craft.db-journal
