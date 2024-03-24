@@ -10,23 +10,30 @@ def search_items(item, conn):
 	items = c.fetchall()
 	return [i[0] for i in items]
 
-def find_combination(item, conn):
+def find_combination(item, conn, processed=None):
+	if processed is None:
+		processed = set()
+
+	if item in processed:
+		return
+
+	processed.add(item)
+
 	c = conn.cursor()
 	c.execute("SELECT item1, item2 FROM combinations WHERE result = ?", (item,))
 	combination = c.fetchone()
 
 	if combination is None:
-		# print(f"No combination found for {item}")
 		return None
 
 	item1, item2 = combination
 	print(f"To craft {item}, you need: {item1} and {item2}")
 
 	if item1 != item:
-		find_combination(item1, conn)
+		find_combination(item1, conn, processed)
 
 	if item2 != item:
-		find_combination(item2, conn)
+		find_combination(item2, conn, processed)
 
 def main():
 	conn = get_db_connection()
