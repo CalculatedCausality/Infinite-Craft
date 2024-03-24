@@ -9,9 +9,7 @@ class BruteForce:
 	def process_combinations(combinations):
 
 		skippers = []
-
 		results = []
-
 		returner = 0
 
 		for item1, item2 in combinations:
