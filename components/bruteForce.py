@@ -14,15 +14,16 @@ class BruteForce:
 
 		for item1, item2 in combinations:
 
-			if any(skipper in item1 or skipper in item2 for skipper in skippers):
-				results.append(None)
-				continue
+			# if any(skipper in item1 or skipper in item2 for skipper in skippers):
+			# 	results.append(None)
+			# 	continue
 
 
 			returner += 1
 
 			if returner > 50:
-				break
+				results.append(None)
+				return
 
 			result = Database.process_item(item1, item2)
 			if result:
