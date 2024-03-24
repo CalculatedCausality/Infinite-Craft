@@ -1,13 +1,13 @@
 import requests
 import concurrent.futures
 from components.config import Config
-
+import time
 
 class ItemTester:
 
 	@classmethod
 	def itemTester(cls, item1, item2):
-		with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 			future = executor.submit(cls.testItem, item1, item2)
 			return future.result()
 
@@ -26,6 +26,9 @@ class ItemTester:
 					data = response.json()
 					break
 				except Exception as e:
+
+					if response.status_code == 500:
+						time.sleep(10)
 					print(e)
 
 		return {
