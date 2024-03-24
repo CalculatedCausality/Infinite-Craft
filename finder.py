@@ -1,4 +1,6 @@
 import sqlite3
+import networkx as nx
+import matplotlib.pyplot as plt
 
 def get_db_connection():
 	conn = sqlite3.connect('infinite_craft.db')
@@ -10,12 +12,14 @@ def search_items(item, conn):
 	items = c.fetchall()
 	return [i[0] for i in items]
 
-def find_combination(item, conn, processed=None):
+def find_combination(item, conn, processed=None, G=None):
 	if processed is None:
 		processed = set()
+	if G is None:
+		G = nx.DiGraph()
 
 	if item in processed:
-		return
+		return G
 
 	processed.add(item)
 
@@ -27,13 +31,23 @@ def find_combination(item, conn, processed=None):
 		return None
 
 	item1, item2 = combination
+	G.add_edge(item1, item)
+	G.add_edge(item2, item)
 	print(f"To craft {item}, you need: {item1} and {item2}")
 
 	if item1 != item:
-		find_combination(item1, conn, processed)
+		find_combination(item1, conn, processed, G)
 
 	if item2 != item:
-		find_combination(item2, conn, processed)
+		find_combination(item2, conn, processed, G)
+
+	return G
+
+def draw_graph(G, item):
+	pos = nx.spring_layout(G)
+	nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray')
+	plt.title(f"Crafting paths for {item}")
+	plt.show()
 
 def main():
 	conn = get_db_connection()
@@ -66,7 +80,8 @@ def main():
 				print("Invalid input. Please enter a number.")
 
 		print(f"Selected item: {desired_item}\n")
-		find_combination(desired_item, conn)
+		G = find_combination(desired_item, conn)
+		draw_graph(G, desired_item)
 		print()
 
 	conn.close()
