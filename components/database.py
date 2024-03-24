@@ -57,7 +57,7 @@ class Database:
 				if c.rowcount == 1:
 					print(f"Item added to database: {result['result']} ({result['emoji']}) from {item1} + {item2}")
 
-				c.execute("INSERT INTO combinations VALUES (?, ?, ?, ?)", (item1, item2, result['result'], result['isNew']))
+				c.execute("INSERT OR IGNORE INTO combinations VALUES (?, ?, ?, ?)", (item1, item2, result['result'], result['isNew']))
 
 				if result['isNew']:
 					print(f"New item discovered: {result['result']} ({result['emoji']}) from {item1} + {item2}")
