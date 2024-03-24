@@ -1,3 +1,4 @@
 *.pyc
 infinite_craft.db
 infinite_craft.db-journal
+old_infinite_craft.db
