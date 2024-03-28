@@ -23,10 +23,6 @@ class BruteForce:
 
 	@staticmethod
 	def brute_force(discovered_items):
-
-		useOverrides = True
-		item1Overrides = ['Star Wars']
-
 		items_to_skip = set(Database.check_item_counts())
 		discovered_items = (item for item in discovered_items if item not in items_to_skip)
 
@@ -39,7 +35,7 @@ class BruteForce:
 			for i in range(0, len(discovered_items_list), chunk_size):
 				combinations = []
 				for item1, item2 in itertools.combinations(discovered_items_list[i:i+chunk_size], 2):
-					if useOverrides and item1 in item1Overrides and item1_counts.get(item1, 0) < 20:
+					if item1_counts.get(item1, 0) < 20:
 						combinations.append((item1, item2))
 						item1_counts[item1] = item1_counts.get(item1, 0) + 1
 				executor.map(BruteForce.process_combinations, [combinations])
